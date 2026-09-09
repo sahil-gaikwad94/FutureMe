@@ -20,18 +20,10 @@ const projectionInputSchema = z.object({
 });
 
 const demoWorkspace = {
-  profile: { values: "Craft, freedom, and being present for the people I love.", context: "Building a career that leaves room for a real life.", horizonYears: 5, onboardingComplete: true },
-  goals: [
-    { id: 1, domain: "career", title: "Become the person who ships ambitious ideas", baseline: 38, target: 92 },
-    { id: 2, domain: "finance", title: "Build a calmer financial runway", baseline: 18, target: 850 },
-    { id: 3, domain: "health", title: "Make movement feel automatic", baseline: 42, target: 86 },
-  ],
-  habits: [
-    { id: 1, domain: "career", title: "Deep work on the skill that matters", weeklyFrequency: 4, minutesPerSession: 90, adherencePrior: 0.74, betaAlpha: 7, betaBeta: 3, currentStreak: 6 },
-    { id: 2, domain: "health", title: "Move before the day gets loud", weeklyFrequency: 4, minutesPerSession: 35, adherencePrior: 0.68, betaAlpha: 5, betaBeta: 3, currentStreak: 4 },
-    { id: 3, domain: "relationships", title: "Make the call while it is still easy", weeklyFrequency: 2, minutesPerSession: 30, adherencePrior: 0.62, betaAlpha: 4, betaBeta: 3, currentStreak: 2 },
-  ],
-  journal: [{ id: 1, content: "I want progress that feels like mine — not a life optimized for somebody else's scoreboard.", tags: "values" }],
+  profile: null,
+  goals: [],
+  habits: [],
+  journal: [],
   checkins: [], scenarios: [], snapshots: [], messages: [],
 };
 
@@ -77,23 +69,52 @@ export const appRouter = router({
       const byDomain = Object.fromEntries((input.inputs || []).map(item => [item.domain, item])) as Partial<Record<Domain, ProjectionInput>>;
       return buildProjection(byDomain, input.horizonYears, input.adherenceOverride);
     }),
+    createGoalPlan: protectedProcedure.input(z.object({ title: z.string().min(4).max(180), outcome: z.string().min(4).max(500), deadline: z.string().min(4).max(40), domain: domainSchema, weeklyHours: z.number().min(0.5).max(60), currentState: z.string().min(4).max(1000) })).mutation(async ({ ctx, input }) => {
+      const database = await db.getDb();
+      if (!database) return { saved: false, plan: null };
+      const playbooks: Record<Domain, Array<{ title: string; weeklyFrequency: number; minutes: number }>> = {
+        career: [
+          { title: "Write the target role and its five non-negotiable skills", weeklyFrequency: 1, minutes: 45 },
+          { title: "Audit your current evidence against three real job descriptions", weeklyFrequency: 1, minutes: 60 },
+          { title: "Build one small proof of the highest-value skill", weeklyFrequency: 2, minutes: 90 },
+          { title: "Get feedback from one person already doing the work", weeklyFrequency: 1, minutes: 30 },
+          { title: "Take the first market action: apply, publish, or ask for the conversation", weeklyFrequency: 1, minutes: 45 },
+        ],
+        finance: [
+          { title: "Map the last 30 days of spending and find the one controllable leak", weeklyFrequency: 1, minutes: 45 },
+          { title: "Choose a specific buffer target and a date that makes it believable", weeklyFrequency: 1, minutes: 30 },
+          { title: "Automate the first transfer on payday", weeklyFrequency: 1, minutes: 20 },
+          { title: "Remove or renegotiate one recurring cost", weeklyFrequency: 1, minutes: 30 },
+          { title: "Review actual cash flow and adjust the plan without self-deception", weeklyFrequency: 1, minutes: 30 },
+        ],
+        health: [
+          { title: "Choose one behavior and define the minimum version you can repeat", weeklyFrequency: 1, minutes: 30 },
+          { title: "Put the behavior in a fixed place and time in your week", weeklyFrequency: 1, minutes: 20 },
+          { title: "Complete three deliberately easy repetitions", weeklyFrequency: 3, minutes: 30 },
+          { title: "Remove one friction point from the environment", weeklyFrequency: 1, minutes: 20 },
+          { title: "Review energy, pain, adherence, and increase difficulty only if earned", weeklyFrequency: 1, minutes: 30 },
+        ],
+        relationships: [
+          { title: "Choose the relationship and name the change you actually want", weeklyFrequency: 1, minutes: 30 },
+          { title: "Have one honest conversation without trying to control the outcome", weeklyFrequency: 1, minutes: 45 },
+          { title: "Create a recurring ritual that makes connection easier", weeklyFrequency: 1, minutes: 30 },
+          { title: "Follow up on what you heard and repair one point of distance", weeklyFrequency: 1, minutes: 30 },
+          { title: "Review whether the relationship is becoming more mutual and specific", weeklyFrequency: 1, minutes: 20 },
+        ],
+      };
+      const steps = playbooks[input.domain];
+      const notes = JSON.stringify({ outcome: input.outcome, deadline: input.deadline, currentState: input.currentState, weeklyHours: input.weeklyHours, planVersion: "v2", milestones: steps.map(step => step.title) });
+      const goalResult = await database.insert(db.goals).values({ userId: ctx.user.id, domain: input.domain, title: input.title, baseline: 0, target: 100, notes }).returning();
+      const goal = goalResult[0];
+      const habitsResult = await database.insert(db.habits).values(steps.map(step => ({ userId: ctx.user.id, goalId: goal.id, domain: input.domain, title: step.title, weeklyFrequency: step.weeklyFrequency, minutesPerSession: step.minutes, adherencePrior: 0.5, betaAlpha: 5, betaBeta: 5 }))).returning();
+      return { saved: true, goal, plan: { outcome: input.outcome, deadline: input.deadline, currentState: input.currentState, weeklyHours: input.weeklyHours, steps: steps.map((step, index) => ({ ...step, id: habitsResult[index]?.id })) } };
+    }),
     saveProfile: protectedProcedure.input(z.object({ values: z.string().min(2).max(5000), context: z.string().min(2).max(5000), horizonYears: z.number().int().min(1).max(20), onboardingComplete: z.boolean().default(false) })).mutation(async ({ ctx, input }) => {
       const profile = await db.saveProfile(ctx.user.id, input);
       const database = await db.getDb();
       if (database && input.onboardingComplete) {
         const existingGoals = await database.select().from(db.goals).where(eq(db.goals.userId, ctx.user.id)).limit(1);
         if (existingGoals.length === 0) {
-          const createdGoals = await database.insert(db.goals).values([
-            { userId: ctx.user.id, domain: "career", title: "Become the person who ships ambitious ideas", baseline: 38, target: 92 },
-            { userId: ctx.user.id, domain: "finance", title: "Build a calmer financial runway", baseline: 18, target: 850 },
-            { userId: ctx.user.id, domain: "health", title: "Make movement feel automatic", baseline: 42, target: 86 },
-            { userId: ctx.user.id, domain: "relationships", title: "Stay close to the people who matter", baseline: 48, target: 84 },
-          ]).returning();
-          await database.insert(db.habits).values([
-            { userId: ctx.user.id, goalId: createdGoals[0]?.id, domain: "career", title: "Deep work on the skill that matters", weeklyFrequency: 4, minutesPerSession: 90, adherencePrior: 0.74, betaAlpha: 7, betaBeta: 3 },
-            { userId: ctx.user.id, goalId: createdGoals[2]?.id, domain: "health", title: "Move before the day gets loud", weeklyFrequency: 4, minutesPerSession: 35, adherencePrior: 0.68, betaAlpha: 5, betaBeta: 3 },
-            { userId: ctx.user.id, goalId: createdGoals[3]?.id, domain: "relationships", title: "Make the call while it is still easy", weeklyFrequency: 2, minutesPerSession: 30, adherencePrior: 0.62, betaAlpha: 4, betaBeta: 3 },
-          ]);
           await database.insert(db.journalEntries).values({ userId: ctx.user.id, content: input.values, tags: "onboarding" });
         }
       }
@@ -140,7 +161,7 @@ export const appRouter = router({
       const projection = workspaceProjection(workspace as typeof demoWorkspace);
       const overridden = input.adherenceOverride ? buildProjection({}, projection.horizonYears, input.adherenceOverride) : projection;
       const turns: ChatTurn[] = input.messages.map(message => ({ role: message.role, content: message.content }));
-      const response = await askOpenRouter(turns, { projection: overridden, voice: (workspace.journal || []).map((item: any) => item.content) });
+      const response = await askOpenRouter(turns, { projection: overridden, voice: (workspace.journal || []).map((item: any) => item.content), goal: workspace.goals?.[0] || null, plan: workspace.habits || [], checkins: workspace.checkins || [] });
       const database = await db.getDb();
       if (database) {
         const latest = input.messages[input.messages.length - 1];

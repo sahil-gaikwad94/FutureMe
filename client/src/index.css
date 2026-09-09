@@ -26,3 +26,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .typing-dots i:nth-child(3) { animation-delay: .28s; }
 @keyframes futureme-bounce { 0%, 60%, 100% { transform: translateY(0); opacity: .45; } 30% { transform: translateY(-4px); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .typing-dots i { animation: none; opacity: .7; } }
+
+.field-label { display: block; margin-bottom: .5rem; color: rgba(255,255,255,.45); font-size: .65rem; line-height: 1; text-transform: uppercase; letter-spacing: .16em; }
+.field-input { width: 100%; border: 1px solid rgba(255,255,255,.1); border-radius: 1rem; background: rgba(255,255,255,.04); padding: .8rem 1rem; color: rgba(255,255,255,.9); font-size: .875rem; outline: none; transition: border-color .18s ease, background .18s ease; }
+.field-input:focus { border-color: rgba(255,177,142,.65); background: rgba(255,255,255,.06); }
+.field-input::placeholder { color: rgba(255,255,255,.25); }
+.field-input option { background: #111426; color: white; }
