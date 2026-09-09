@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: futureme
+    runtime: node
+    plan: free
+    buildCommand: pnpm install --frozen-lockfile && pnpm build
+    startCommand: pnpm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: futureme-db
+          property: connectionString
+      - key: APP_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_MODEL
+        value: openrouter/free
+      - key: OPENROUTER_SITE_URL
+        sync: false
+      - key: OPENROUTER_SITE_NAME
+        value: FutureMe
+
+databases:
+  - name: futureme-db
+    plan: free
