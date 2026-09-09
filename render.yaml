@@ -17,6 +17,8 @@ services:
           property: connectionString
       - key: APP_URL
         sync: false
+      - key: OAUTH_SERVER_URL
+        value: https://api.manus.im
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET
