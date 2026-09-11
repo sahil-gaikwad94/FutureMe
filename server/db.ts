@@ -1,13 +1,26 @@
 import { desc, eq, and } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import { chatMessages, checkins, goals, habits, journalEntries, profiles, scenarios, trajectorySnapshots, users, type InsertUser } from "../drizzle/schema";
+import { chatMessages, checkins, goals, habits, insights, journalEntries, profiles, reviews, scenarios, trajectorySnapshots, users, type InsertUser } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+import { MODEL_VERSION } from "./engine/projection";
+import { loadWorkspace } from "./workspace";
 
 let pool: Pool | null = null;
 let database: any = null;
+let injected: any = null;
+
+/**
+ * Test seam: bind an externally-constructed database (the in-memory harness in
+ * server/test/db.ts) so integration tests exercise the real Drizzle query paths
+ * without a live Postgres. Never called in production.
+ */
+export function setDbForTests(instance: any): void {
+  injected = instance;
+}
 
 export async function getDb(): Promise<any> {
+  if (injected) return injected;
   if (!database && ENV.databaseUrl) {
     pool = new Pool({ connectionString: ENV.databaseUrl, max: 5, ssl: ENV.isProduction ? { rejectUnauthorized: false } : undefined });
     database = drizzle(pool);
@@ -15,7 +28,7 @@ export async function getDb(): Promise<any> {
   return database;
 }
 
-export async function closeDb() { await pool?.end(); pool = null; database = null; }
+export async function closeDb() { await pool?.end(); pool = null; database = null; injected = null; }
 
 export async function upsertUser(user: InsertUser): Promise<void> {
   const db = await getDb();
@@ -34,17 +47,7 @@ export async function getUserByOpenId(openId: string) {
 export async function getWorkspace(userId: number) {
   const db = await getDb();
   if (!db) return null;
-  const [profile, userGoals, userHabits, journal, recentCheckins, userScenarios, snapshots, messages] = await Promise.all([
-    db.select().from(profiles).where(eq(profiles.userId, userId)).limit(1),
-    db.select().from(goals).where(eq(goals.userId, userId)).orderBy(desc(goals.createdAt)),
-    db.select().from(habits).where(eq(habits.userId, userId)).orderBy(desc(habits.createdAt)),
-    db.select().from(journalEntries).where(eq(journalEntries.userId, userId)).orderBy(desc(journalEntries.createdAt)).limit(12),
-    db.select().from(checkins).where(eq(checkins.userId, userId)).orderBy(desc(checkins.checkinDate)).limit(60),
-    db.select().from(scenarios).where(eq(scenarios.userId, userId)).orderBy(desc(scenarios.updatedAt)),
-    db.select().from(trajectorySnapshots).where(eq(trajectorySnapshots.userId, userId)).orderBy(desc(trajectorySnapshots.createdAt)).limit(12),
-    db.select().from(chatMessages).where(eq(chatMessages.userId, userId)).orderBy(desc(chatMessages.createdAt)).limit(20),
-  ]);
-  return { profile: profile[0] || null, goals: userGoals, habits: userHabits, journal, checkins: recentCheckins, scenarios: userScenarios, snapshots, messages: messages.reverse() };
+  return loadWorkspace(db, tables, userId);
 }
 
 export async function saveProfile(userId: number, values: { values: string; context: string; horizonYears: number; onboardingComplete?: boolean }) {
@@ -55,10 +58,13 @@ export async function saveProfile(userId: number, values: { values: string; cont
   return (await db.insert(profiles).values({ userId, ...values }).returning())[0];
 }
 
-export async function saveSnapshot(userId: number, payload: Record<string, unknown>, scenarioId?: number) {
+export async function saveSnapshot(userId: number, payload: Record<string, unknown>, options: { scenarioId?: number; modelVersion?: string } = {}) {
   const db = await getDb();
   if (!db) return null;
-  return (await db.insert(trajectorySnapshots).values({ userId, scenarioId, modelVersion: "v1.0", payload }).returning())[0];
+  return (await db
+    .insert(trajectorySnapshots)
+    .values({ userId, scenarioId: options.scenarioId, modelVersion: options.modelVersion ?? MODEL_VERSION, payload })
+    .returning())[0];
 }
 
 export async function getHabitForUser(userId: number, habitId: number) {
@@ -67,4 +73,19 @@ export async function getHabitForUser(userId: number, habitId: number) {
   return (await db.select().from(habits).where(and(eq(habits.userId, userId), eq(habits.id, habitId))).limit(1))[0];
 }
 
-export { chatMessages, checkins, goals, habits, journalEntries, profiles, scenarios, trajectorySnapshots, users };
+/** Table bundle for the workspace loader, so it never imports db.ts directly. */
+export const tables = {
+  profiles,
+  goals,
+  habits,
+  checkins,
+  journalEntries,
+  scenarios,
+  trajectorySnapshots,
+  chatMessages,
+  reviews,
+  insights,
+  users,
+};
+
+export { chatMessages, checkins, goals, habits, insights, journalEntries, profiles, reviews, scenarios, trajectorySnapshots, users };
