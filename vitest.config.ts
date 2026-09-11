@@ -13,6 +13,12 @@ export default defineConfig({
     },
   },
   test: {
+    // Set before any module is evaluated: server/env.ts reads process.env at
+    // import time, so these cannot be assigned in a beforeEach hook.
+    env: {
+      OPENROUTER_API_KEY: "vitest-key",
+      OPENROUTER_MODEL: "primary/model",
+    },
     environment: "node",
     include: ["server/**/*.test.ts", "server/**/*.spec.ts"],
   },
