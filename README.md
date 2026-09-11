@@ -45,22 +45,7 @@ https://YOUR-SERVICE.onrender.com/api/auth/google/callback
 
 Google sign-in starts at `/api/auth/google/start`. State is stored in a short-lived, HTTP-only cookie and compared before exchanging the authorization code.
 
-## OpenRouter
 
-Set `OPENROUTER_API_KEY` and optionally pin a currently available free model in `OPENROUTER_MODEL`. The default is `openrouter/free`, which lets OpenRouter select an available free provider. For reproducible behavior, pin a specific `:free` model after checking the current [OpenRouter free model catalog](https://openrouter.ai/collections/free-models). The product remains usable when the key is absent or a free provider is rate-limited.
-
-## Render Web Service deployment
-
-1. Create a Render PostgreSQL database.
-2. Create a Render **Web Service** connected to this GitHub repository and the `main` branch.
-3. Use Node as the runtime. Set the build command to `pnpm install --frozen-lockfile && pnpm build` and the start command to `pnpm start`. The production start script applies pending Drizzle migrations before launching the web server.
-4. Add the PostgreSQL `DATABASE_URL` from the Render database, or use Render’s “Add from database” connection variable.
-5. Add these environment variables: `NODE_ENV=production`, a long random `JWT_SECRET`, `APP_URL=https://YOUR-SERVICE.onrender.com`, `OAUTH_SERVER_URL=https://api.manus.im`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, and `OPENROUTER_SITE_URL=https://YOUR-SERVICE.onrender.com`. `OAUTH_SERVER_URL` is only for the template’s optional Manus OAuth compatibility layer; Google OAuth is the active sign-in flow.
-6. Deploy once. The production start script runs `pnpm db:migrate` automatically against `DATABASE_URL`, so a Render Shell is not required. The migration is PostgreSQL-specific because Render Postgres is the production target.
-7. Add `/healthz` as the Render health check path.
-8. Add the exact Render callback URL to Google Cloud Console, redeploy if necessary, and test sign-in, onboarding, a scenario save, a check-in, and a chat message from the live URL.
-
-The server binds to `0.0.0.0` and Render’s `PORT`. The production build serves the Vite output from the same Node process.
 
 ## Safety and model limitations
 
